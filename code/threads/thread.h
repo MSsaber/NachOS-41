@@ -75,7 +75,7 @@ enum ThreadStatus { JUST_CREATED, RUNNING, READY, BLOCKED };
 //  that only run in the kernel have a NULL address space.
 
 
-#define MAX_SIZE  128  //最大线程数
+#define MAX_SIZE  8  //最大线程数
 //pk数组主要记录线程号被使用的状态
 //下标位线程号，数组对应值位线程号状态
 //对应值为0时，表示该线程号没有线程占用
@@ -90,7 +90,7 @@ class Thread {
     int *stackTop;			 // the current stack pointer
     void *machineState[MachineStateSize];  // all registers except for stackTop
 
-	int tid;
+	int tid = 0;
 	int priority;//线程优先级,值越大优先级越高
   public:
     Thread(char* debugName);//原构造函数		// initialize a Thread 
@@ -101,26 +101,31 @@ class Thread {
 
     // basic thread operations
 	Thread(char* debugName,int priority);//新构造函数
+  Thread(char* threadName, int parent_id ,int priority);// Record parent pointer
 	int getTid(){return this->tid;};//获得线程id
 	int getPriority(){return priority;};//获得线程优先级
 
-    void Fork(VoidFunctionPtr func, void *arg); //将线程加入就绪队列
-    				// Make thread run (*func)(arg)
-    void Yield();  //打断当前线程，运行就绪队列里的线程
-					// Relinquish the CPU if any 
-				// other thread is runnable
-    void Sleep(bool finishing);//将当前线程阻塞
-								 // Put the thread to sleep and 
-				// relinquish the processor
-    void Begin();	// Startup code for the thread	
-    void Finish();  //线程运行结束	
-						// The thread is done executing
+  void Fork(VoidFunctionPtr func, void *arg); //将线程加入就绪队列
+  				// Make thread run (*func)(arg)
+  void Yield();  //打断当前线程，运行就绪队列里的线程
+				// Relinquish the CPU if any 
+			// other thread is runnable
+  void Sleep(bool finishing);//将当前线程阻塞
+							 // Put the thread to sleep and 
+			// relinquish the processor
+  void Begin();	// Startup code for the thread	
+  void Finish();  //线程运行结束	
+					// The thread is done executing
     
-    void CheckOverflow();   	// Check if thread stack has overflowed
-    void setStatus(ThreadStatus st) { status = st; }//设置线程状态
-    char* getName() { return (name); }//获取线程名字
-    void Print() { cout << name; }//打印线程名字
-    void SelfTest();	//测试方法	// test whether thread impl is working
+  void CheckOverflow();   	// Check if thread stack has overflowed
+  void setStatus(ThreadStatus st) { status = st; }//设置线程状态
+  char* getName() { return (name); }//获取线程名字
+  void Print() { cout << name; }//打印线程名字
+  void SelfTest();	//测试方法	// test whether thread impl is working
+
+  int getParent() { return this->parent_id; } // Return parent pointer
+
+  bool valid() {return this->enable; }
 
   private:
     // some of the private data for this class is listed above
@@ -130,6 +135,8 @@ class Thread {
 				// (If NULL, don't deallocate stack)
     ThreadStatus status;	// ready, running or blocked
     char* name;
+    int parent_id;// parent pointer
+    bool enable;
 
     void StackAllocate(VoidFunctionPtr func, void *arg);
     				// Allocate a stack for thread.

@@ -20,7 +20,13 @@
 #include "thread.h"
 #include "switch.h"
 #include "synch.h"
+#include "stdio.h"
 #include "sysdep.h"
+#include "interrupt.h"
+
+#define MAIN_THREAD_TIMES 3
+#define CHILD_THREAD_TIMES 4
+#define CREATE_THREAD_NUM 1
 
 // this is put at the top of the execution stack, for detecting stack overflows
 const int STACK_FENCEPOST = 0xdedbeef;
@@ -60,9 +66,10 @@ Thread::Thread(char* threadName)
 
 Thread::Thread(char* threadName,int priority)
 {
-
+    this->enable = true;
 	if(++threadMAX > MAX_SIZE){//限制线程数
-		cout<<"最大线程数:"<<MAX_SIZE<<"!!!"<<endl;
+		//cout<<"最大线程数:"<<MAX_SIZE<<"!!!"<<endl;
+        this->enable = false;
 		ASSERT(threadMAX<=MAX_SIZE);
 	}
 	int j;
@@ -86,6 +93,35 @@ Thread::Thread(char* threadName,int priority)
     space = NULL;
 }
 
+Thread::Thread(char* threadName, int parent_id ,int priority)
+{
+    this->enable = true;
+    this->parent_id = parent_id;
+    if(++threadMAX > MAX_SIZE){//限制线程数
+		//cout<<"最大线程数:"<<MAX_SIZE<<"!!!"<<endl;
+        this->enable = false;
+		ASSERT(threadMAX<=MAX_SIZE);
+	}
+	int j;
+	for(j=2;j<MAX_SIZE;j++){//设置id
+		if(pk[j]==0){
+			this->tid = j-1;
+			pk[j] = 1;
+			break;
+		}
+	}
+    this->priority = priority;
+    name = threadName;
+    stackTop = NULL;
+    stack = NULL;
+    status = JUST_CREATED;
+    for (int i = 0; i < MachineStateSize; i++) {
+    machineState[i] = NULL;     // not strictly necessary, since
+                    // new thread ignores contents 
+                    // of machine registers
+    }
+    space = NULL;
+}
 
 //----------------------------------------------------------------------
 // Thread::~Thread
@@ -437,23 +473,39 @@ Thread::RestoreUserState()
 }
 
 
-//----------------------------------------------------------------------
-// SimpleThread
-// 	Loop 5 times, yielding the CPU to another ready thread 
-//	each iteration.
-//
-//	"which" is simply a number identifying the thread, for debugging
-//	purposes.
-//----------------------------------------------------------------------
-
-static void
-SimpleThread(int which)
+/*
+* Main Thread
+* Create one thread for tree
+* Loop times define by MAIN_THREAD_TIMES
+*/
+static void SimpleThread(void* argptr)
 {
-    int num;
-    
-    for (num = 0; num < 5; num++) {
-	cout << "*** thread " << which << " looped " << num << " times\n";
-        kernel->currentThread->Yield();
+    static int child_id = 1;
+    if (argptr == NULL) return;
+    Thread *t = (Thread *)argptr;
+    for (size_t i = 0; i < MAIN_THREAD_TIMES; i++) {
+        if (!t->valid()) continue;
+
+        char created_thread_id[8] = {0};
+        char created_thread_pro[8] = {0};
+
+        Thread *child = new  Thread("ChildThread", t->getTid(), rand()%10+1);
+        if (child && child->valid() && child->getTid() != 0) {
+            sprintf(created_thread_id, "%d", child->getTid());
+            sprintf(created_thread_pro, "%d", child->getPriority());
+
+            child->Fork((VoidFunctionPtr) SimpleThread, (void *)child);
+
+            child_id++;
+        } else {
+            if (child) delete child;
+            sprintf(created_thread_id, "%s", "NULL");
+            sprintf(created_thread_pro, "%s", "NULL");
+        }
+
+        printf("|Name--%s|id--%d|looped_time--%d|priority--%d|parent--%d|create child thread--%s|child thread priority--%s|\n",
+        t->getName(), t->getTid(),i+1, t->getPriority(),t->getParent(), created_thread_id,created_thread_pro);
+        printf("-------------------------------------------------------------------------------------------------------------\n");
     }
 }
 
@@ -480,13 +532,8 @@ Thread::SelfTest()
         cout<<t[i]->getName()<<t[i]->getTid()<<endl;
     }*/
 
-     Thread *t[4];
-    for(int i = 0;i < 4;i++){
-        srand(time(NULL)+i);
-        t[i] = new Thread("线程",rand()%10+1);
-        cout<<t[i]->getName()<<threadMAX<<" tid:"<<t[i]->getTid()<<" priority:"<<t[i]->getPriority()<<endl;
-        t[i]->Fork((VoidFunctionPtr) SimpleThread, (void *)threadMAX);
-    }
-
+    Thread *t = NULL;
+    srand(time(NULL));
+    t = new Thread("OriginThread", 0,rand()%10+1);
+    t->Fork((VoidFunctionPtr) SimpleThread, (void *)t);
 }
-

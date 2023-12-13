@@ -7,7 +7,7 @@ STRIP = $(GCCDIR)strip
 
 COFF2NOFF = ../../coff2noff/coff2noff
 
-INCDIR =-I../userprog -I../lib
+INCDIR =-I../userprog -I../lib -I/usr/include/stdio.h
 CFLAGS = -G 0 -O3 -ggdb -c $(INCDIR)
 
 # list of all application sources

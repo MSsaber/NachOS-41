@@ -10,6 +10,8 @@
 #include "utility.h"
 #include "debug.h" 
 #include "string.h"
+#include <stdarg.h>
+#include <stdio.h>
 
 //----------------------------------------------------------------------
 // Debug::Debug
@@ -42,4 +44,16 @@ Debug::IsEnabled(char flag)
     } else {
     	return FALSE;
     }
+}
+
+void
+print(const char *fmt, ...)
+{
+    char buf[256];
+    va_list args;
+    va_start(args, fmt);
+    vsprintf(buf,fmt,args);
+    va_end(args);
+
+    printf(buf);
 }

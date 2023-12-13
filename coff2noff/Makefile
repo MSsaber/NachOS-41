@@ -22,8 +22,8 @@
 # 2003/10/07 rewritten for usage with autoconf
 
 CC=gcc
-CFLAGS= -g -m32 -O2 -DRDATA -DHAVE_CONFIG_H -I@top_dir@
-LD=gcc -m32
+CFLAGS= -g -O2 -DRDATA -DHAVE_CONFIG_H -I@top_dir@
+LD=gcc
 
 all: coff2noff
 

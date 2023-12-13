@@ -35,4 +35,6 @@
 typedef void (*VoidFunctionPtr)(void *arg); 
 typedef void (*VoidNoArgFunctionPtr)(); 
 
+extern void print(const char *fmt, ...);
+
 #endif // UTILITY_H
