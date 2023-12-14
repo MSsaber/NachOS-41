@@ -60,7 +60,12 @@ class List {
     unsigned int NumInList() { return numInList;};
     				// how many items in the list?
     bool IsEmpty() { return (numInList == 0); };
-    				// is the list empty? 
+    				// is the list empty?
+    
+    /*
+    * Sort insert sert by prrority
+    */
+    void SortInsert(T item);
 
     void Apply(void (*f)(T)) const; 
     				// apply function to all elements in list

@@ -33,7 +33,7 @@ class Scheduler {
     void Print();		// Print contents of ready list
     
     // SelfTest for scheduler is implemented in class Thread
-    void ReadyToRunPriority(Thread* thread); //将线程按优先级加入就绪队列    
+    //void ReadyToRunPriority(Thread* thread); //将线程按优先级加入就绪队列    
   private:
     List<Thread *> *readyList;  // queue of threads that are ready to run,
 				// but not running

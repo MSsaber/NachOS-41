@@ -20,16 +20,26 @@
 #include "thread.h"
 #include "switch.h"
 #include "synch.h"
-#include "stdio.h"
 #include "sysdep.h"
-#include "interrupt.h"
+//--------------------------------------------------modify
+#include <cstdlib>
+#include <ctime>
+#include <vector>
+#include <set>
+#include <map>
+//--------------------------------------------------------
 
-#define MAIN_THREAD_TIMES 3
-#define CHILD_THREAD_TIMES 4
-#define CREATE_THREAD_NUM 1
 
 // this is put at the top of the execution stack, for detecting stack overflows
 const int STACK_FENCEPOST = 0xdedbeef;
+
+static Thread* threadPool[MAX_SIZE];
+
+static set<int> setThreadID;
+static set<int> setParentID;
+static map<int, Thread*> threadMap;  // Use std::map instead of std::unordered_map
+
+static vector<Thread*> threadTree;	//Thread tree
 
 //----------------------------------------------------------------------
 // Thread::Thread
@@ -39,19 +49,44 @@ const int STACK_FENCEPOST = 0xdedbeef;
 //	"threadName" is an arbitrary string, useful for debugging.
 //----------------------------------------------------------------------
 
-Thread::Thread(char* threadName)
+Thread::Thread(char* threadName, int Priority)
 {
 
-  int j;
-    for(j=0;j<2;j++){//设置id
-        if(pk[j]==0){
-            this->tid = j-1;
-            pk[j] = 1;
-            break;
-        }
-  }
+	if(++threadNum>MAX_SIZE){
+		cout <<"最大线程数："<<MAX_SIZE<<endl;
+		ASSERT(threadNum<=MAX_SIZE);
+	}
+	int i=0;
+	for(i=0;i<MAX_SIZE;i++){
+		if(Tstatus[i]==0) {
+			this->tid=i+1;
+			Tstatus[i]=1;
+			break;
+		}		
+	}
+	 if(strcmp(threadName,"main")==0||strcmp(threadName,"postal worker")==0)
+        this->priority = 10000;
+      if(strcmp(threadName,"ping")==0)
+        this->priority=-1;
+	this->priority=Priority;
+	
+    name = threadName;
+    stackTop = NULL;
+    stack = NULL;
+    status = JUST_CREATED;
+    for (int i = 0; i < MachineStateSize; i++) {
+	machineState[i] = NULL;		// not strictly necessary, since
+					// new thread ignores contents 
+					// of machine registers
+    }
+    space = NULL;
 
-    priority = 100000;
+}
+
+//-----------------------------------------------------------
+
+Thread::Thread(char* threadName)
+{
     name = threadName;
     stackTop = NULL;
     stack = NULL;
@@ -64,69 +99,10 @@ Thread::Thread(char* threadName)
     space = NULL;
 }
 
-Thread::Thread(char* threadName,int priority)
-{
-    this->enable = true;
-	if(++threadMAX > MAX_SIZE){//限制线程数
-		//cout<<"最大线程数:"<<MAX_SIZE<<"!!!"<<endl;
-        this->enable = false;
-		ASSERT(threadMAX<=MAX_SIZE);
-	}
-	int j;
-	for(j=2;j<MAX_SIZE;j++){//设置id
-		if(pk[j]==0){
-			this->tid = j-1;
-			pk[j] = 1;
-			break;
-		}
-	}
-    this->priority = priority;
-    name = threadName;
-    stackTop = NULL;
-    stack = NULL;
-    status = JUST_CREATED;
-    for (int i = 0; i < MachineStateSize; i++) {
-    machineState[i] = NULL;     // not strictly necessary, since
-                    // new thread ignores contents 
-                    // of machine registers
-    }
-    space = NULL;
-}
-
-Thread::Thread(char* threadName, int parent_id ,int priority)
-{
-    this->enable = true;
-    this->parent_id = parent_id;
-    if(++threadMAX > MAX_SIZE){//限制线程数
-		//cout<<"最大线程数:"<<MAX_SIZE<<"!!!"<<endl;
-        this->enable = false;
-		ASSERT(threadMAX<=MAX_SIZE);
-	}
-	int j;
-	for(j=2;j<MAX_SIZE;j++){//设置id
-		if(pk[j]==0){
-			this->tid = j-1;
-			pk[j] = 1;
-			break;
-		}
-	}
-    this->priority = priority;
-    name = threadName;
-    stackTop = NULL;
-    stack = NULL;
-    status = JUST_CREATED;
-    for (int i = 0; i < MachineStateSize; i++) {
-    machineState[i] = NULL;     // not strictly necessary, since
-                    // new thread ignores contents 
-                    // of machine registers
-    }
-    space = NULL;
-}
 
 //----------------------------------------------------------------------
 // Thread::~Thread
 // 	De-allocate a thread.
-//
 // 	NOTE: the current thread *cannot* delete itself directly,
 //	since it is still running on the stack that we need to delete.
 //
@@ -138,8 +114,11 @@ Thread::Thread(char* threadName, int parent_id ,int priority)
 Thread::~Thread()
 {
     DEBUG(dbgThread, "Deleting thread: " << name);
-	pk[tid +1] = 0;
-	threadMAX--;
+
+    //Dont realse thread source
+	//Tstatus[tid-1]=0;
+	//threadNum--;
+
     ASSERT(this != kernel->currentThread);
     if (stack != NULL)
 	DeallocBoundedArray((char *) stack, StackSize * sizeof(int));
@@ -174,10 +153,10 @@ Thread::Fork(VoidFunctionPtr func, void *arg)
     
     DEBUG(dbgThread, "Forking thread: " << name << " f(a): " << (int) func << " " << arg);
     
-    StackAllocate(func, arg);
+    StackAllocate(func, arg);	
 
     oldLevel = interrupt->SetLevel(IntOff);
-    scheduler->ReadyToRunPriority(this);	// ReadyToRun assumes that interrupts 
+    scheduler->ReadyToRun(this);	// ReadyToRun assumes that interrupts 	// 将当前线程加入到就绪队列
 					// are disabled!
     (void) interrupt->SetLevel(oldLevel);
 }    
@@ -276,7 +255,7 @@ Thread::Finish ()
 //----------------------------------------------------------------------
 
 void
-Thread::Yield ()
+Thread::Yield () 
 {
     Thread *nextThread;
     IntStatus oldLevel = kernel->interrupt->SetLevel(IntOff);
@@ -284,10 +263,19 @@ Thread::Yield ()
     ASSERT(this == kernel->currentThread);
     
     DEBUG(dbgThread, "Yielding thread: " << name);
+    //---------------------------------------修改处
     
-    kernel->scheduler->ReadyToRunPriority(this);//将当前线程按优先级加入就绪队列
+	kernel->scheduler->ReadyToRun(this);  //先将线程加入就绪队列
+	
+    //----------------------------------------
+    
     nextThread = kernel->scheduler->FindNextToRun();
     if (nextThread != NULL) {
+    //修改处 --------------------------------------------------------------------// 注释掉
+    
+	//kernel->scheduler->ReadyToRun(this);
+		
+	//-------------------------------------------------------------------------------
 	kernel->scheduler->Run(nextThread, FALSE);
     }
     (void) kernel->interrupt->SetLevel(oldLevel);
@@ -473,67 +461,88 @@ Thread::RestoreUserState()
 }
 
 
-/*
-* Main Thread
-* Create one thread for tree
-* Loop times define by MAIN_THREAD_TIMES
-*/
-static void SimpleThread(void* argptr)
+//----------------------------------------------------------------------
+// SimpleThread
+// 	Loop 5 times, yielding the CPU to another ready thread 
+//	each iteration.
+//
+//	"which" is simply a number identifying the thread, for debugging
+//	purposes.
+//----------------------------------------------------------------------
+
+static void
+SimpleThread(Thread *t)
 {
-    static int child_id = 1;
-    if (argptr == NULL) return;
-    Thread *t = (Thread *)argptr;
-    for (size_t i = 0; i < MAIN_THREAD_TIMES; i++) {
-        if (!t->valid()) continue;
+	IntStatus oldLevel = kernel->interrupt->SetLevel(IntOff);	//关中断 
+     for(int i=1;i<=3;i++){
+     	printf("\n| Name : %s | ThreadID：%2d | looped_time %d|  priority：%2d | ParentThreadID：%2d | ",
+        t->getName() ,t->getTid(), i, t->getPriority(), t->parentID);
+     	if(threadNum < MAX_SIZE) {
+		    int p=rand()%(10)+1; 
+		    threadPool[threadNum] = new Thread("New Thread",p);
+		
+		    // set parent thread info
+		    threadPool[threadNum]->parentID = t->getTid();
+		    threadPool[threadNum]->parentPriority = t->getPriority();
+		    printf("ChildThreadID：%d | ChildPriority：%d | ",
+            threadPool[threadNum]->getTid(), threadPool[threadNum]->getPriority());
 
-        char created_thread_id[8] = {0};
-        char created_thread_pro[8] = {0};
-
-        Thread *child = new  Thread("ChildThread", t->getTid(), rand()%10+1);
-        if (child && child->valid() && child->getTid() != 0) {
-            sprintf(created_thread_id, "%d", child->getTid());
-            sprintf(created_thread_pro, "%d", child->getPriority());
-
-            child->Fork((VoidFunctionPtr) SimpleThread, (void *)child);
-
-            child_id++;
-        } else {
-            if (child) delete child;
-            sprintf(created_thread_id, "%s", "NULL");
-            sprintf(created_thread_pro, "%s", "NULL");
-        }
-
-        printf("|Name--%s|id--%d|looped_time--%d|priority--%d|parent--%d|create child thread--%s|child thread priority--%s|\n",
-        t->getName(), t->getTid(),i+1, t->getPriority(),t->getParent(), created_thread_id,created_thread_pro);
-        printf("-------------------------------------------------------------------------------------------------------------\n");
-    }
+		    threadPool[threadNum]->Fork((VoidFunctionPtr)SimpleThread,(void *)threadPool[threadNum]);
+		}else{
+			cout << "No Thread Created |";
+		}
+        //print("\n----------------------------------------------------------------------------------------------------------------------");
+		kernel->currentThread->Yield();
+	}
 }
 
-//----------------------------------------------------------------------
-// Thread::SelfTest
-// 	Set up a ping-pong between two threads, by forking a thread 
-//	to call SimpleThread, and then calling SimpleThread ourselves.
-//----------------------------------------------------------------------
+void
+printThreadHierarchy(int parentId, int indent)
+{
+	
+	for (set<int>::iterator it = setThreadID.begin(); it != setThreadID.end(); ++it) {
+		if (threadMap[*it]->parentID == parentId) {
+			for (int i = 0; i < indent; ++i) {
+				cout << "  |";
+			}
+			cout << "--" << *it << endl;
+			printThreadHierarchy(threadMap[*it]->getTid(), indent + 1);
+		}
+	}
+}
+
+static void
+printThreadTree()
+{
+    cout << "\n print thread tree：\n";
+	cout << "0" << "\n";
+	for(int i = 1; i <= MAX_SIZE; i ++){
+		threadTree.push_back(threadPool[i]);
+	}
+	
+	for (int i = 0; i < MAX_SIZE; i++) {
+		setThreadID.insert(threadTree[i]->getTid());
+		setParentID.insert(threadTree[i]->parentID);
+		threadMap[threadTree[i]->getTid()] = threadTree[i];
+	}
+	
+	for (set<int>::iterator it = setParentID.begin(); it != setParentID.end(); ++it) {
+		if (setThreadID.find(*it) == setThreadID.end()) {
+			printThreadHierarchy(*it, 1);
+		}
+	}
+	
+}
 
 void
 Thread::SelfTest()
 {
     DEBUG(dbgThread, "Entering Thread::SelfTest");
-
-    /*Thread *t = new Thread("forked thread");
-
-    t->Fork((VoidFunctionPtr) SimpleThread, (void *) 1);
-    kernel->currentThread->Yield();
-    SimpleThread(0);*/
-
-/*  Thread *t[130];
-    for(int i = 0;i < 130;i++){
-        t[i] = new Thread("线程",1);
-        cout<<t[i]->getName()<<t[i]->getTid()<<endl;
-    }*/
-
-    Thread *t = NULL;
-    srand(time(NULL));
-    t = new Thread("OriginThread", 0,rand()%10+1);
-    t->Fork((VoidFunctionPtr) SimpleThread, (void *)t);
+	srand(time(0) + threadNum);
+	int randNum = rand()%10+1;
+	//Thread *t1;
+	threadPool[threadNum] = new Thread("MainThread", randNum);
+	threadPool[threadNum]->Fork((VoidFunctionPtr)SimpleThread, (void *)threadPool[threadNum]);
+	kernel->currentThread->Yield();
+	printThreadTree();
 }

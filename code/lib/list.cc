@@ -381,3 +381,47 @@ SortedList<T>::SelfTest(T *p, int numEntries)
 
      delete q;
 }
+
+/*
+* Sort insert sert by prrority
+*/
+template <class T>
+void
+List<T>::SortInsert(T item)
+{
+    //create new item for insert list
+    ListElement<T> *ele = new ListElement<T>(item);
+    ASSERT(!IsInList(item));
+
+    if(IsEmpty()) {
+        // If list empty, push new item to tail
+	    first = ele;
+	    last = ele;
+        numInList++;
+    } else {
+        //if list not empty, sort item by priority and put tail at same priority item
+        ListElement<T> *prev = first;
+        ListElement<T> *now_ptr = NULL;
+
+        while (prev != NULL) {
+            //Traversing list and sort by priority
+            if (prev->item->getPriority() < ele->item->getPriority()) {
+                ele->next = prev;
+                if (now_ptr == NULL) {
+                    first = ele;
+                } else {
+                    now_ptr->next = ele;
+                }
+                numInList++;
+                break;
+            } 
+            now_ptr = prev;
+            prev = prev->next;
+        }
+        if (now_ptr == last) {
+            last->next = ele;
+            last = ele;
+            numInList++;
+        }
+    }
+}

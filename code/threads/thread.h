@@ -44,6 +44,11 @@
 #include "machine.h"
 #include "addrspace.h"
 
+//------------------------------------修改处
+#include "list.h"
+//---------------------------------
+
+
 // CPU register state to be saved on context switch.  
 // The x86 needs to save only a few registers, 
 // SPARC and MIPS needs to save 10 registers, 
@@ -52,6 +57,12 @@
 // For simplicity, I just take the maximum over all architectures.
 
 #define MachineStateSize 75 
+
+//------------------------------------------------------修改处
+#define MAX_SIZE 8    // 定义线程最大数
+static int Tstatus[MAX_SIZE]={0};     //定义线程号的使用状态，1为已被使用，0为未被使用
+static int threadNum=0;    //定义已经产生的线程的数量
+//------------------------------------------------------
 
 
 // Size of the thread's private execution stack.
@@ -74,69 +85,64 @@ enum ThreadStatus { JUST_CREATED, RUNNING, READY, BLOCKED };
 //  Some threads also belong to a user address space; threads
 //  that only run in the kernel have a NULL address space.
 
-
-#define MAX_SIZE  8  //最大线程数
-//pk数组主要记录线程号被使用的状态
-//下标位线程号，数组对应值位线程号状态
-//对应值为0时，表示该线程号没有线程占用
-//对应值为1时，表示该线程号被占用
-static int pk[MAX_SIZE]={0};
-static int threadMAX = 0;//记录线程数
-
 class Thread {
   private:
     // NOTE: DO NOT CHANGE the order of these first two members.
     // THEY MUST be in this position for SWITCH to work.
     int *stackTop;			 // the current stack pointer
     void *machineState[MachineStateSize];  // all registers except for stackTop
-
-	int tid = 0;
-	int priority;//线程优先级,值越大优先级越高
+    int tid;
+    int priority;
   public:
-    Thread(char* debugName);//原构造函数		// initialize a Thread 
-    ~Thread(); //析构函数				// deallocate a Thread
+    Thread(char* debugName);		// initialize a Thread
+    Thread(char* debugName,int Priority);
+    ~Thread(); 				// deallocate a Thread
 					// NOTE -- thread being deleted
 					// must not be running when delete 
 					// is called
 
     // basic thread operations
-	Thread(char* debugName,int priority);//新构造函数
-  Thread(char* threadName, int parent_id ,int priority);// Record parent pointer
-	int getTid(){return this->tid;};//获得线程id
-	int getPriority(){return priority;};//获得线程优先级
+   	// parent pointer
+    Thread* parentThread;
+    int parentID;
+    int parentPriority;
+    // child thread list
+    Thread* childThreads[MAX_SIZE]; // save child thread
+    void PrintTree(int level); // print tree
+    //List<Thread *> *childThreads;
+    	
+    int getPriority() { return priority; }
+    int getTid() { return tid; }
+    Thread* getParentThread() { return parentThread; }
 
-  void Fork(VoidFunctionPtr func, void *arg); //将线程加入就绪队列
-  				// Make thread run (*func)(arg)
-  void Yield();  //打断当前线程，运行就绪队列里的线程
-				// Relinquish the CPU if any 
-			// other thread is runnable
-  void Sleep(bool finishing);//将当前线程阻塞
-							 // Put the thread to sleep and 
-			// relinquish the processor
-  void Begin();	// Startup code for the thread	
-  void Finish();  //线程运行结束	
-					// The thread is done executing
+    // set parent pointer
+    void setParent(Thread* parent) { this->parentThread = parent; }
+		
+    //------------------------------------------------------------------------
+
+    void Fork(VoidFunctionPtr func, void *arg); 
+    				// Make thread run (*func)(arg
+    void Yield();  		// Relinquish the CPU if any
+				// other thread is runnable
+    void Sleep(bool finishing); // Put the thread to sleep and
+				// relinquish the processor
+    void Begin();		// Startup code for the thread	
+    void Finish();  		// The thread is done executing
     
-  void CheckOverflow();   	// Check if thread stack has overflowed
-  void setStatus(ThreadStatus st) { status = st; }//设置线程状态
-  char* getName() { return (name); }//获取线程名字
-  void Print() { cout << name; }//打印线程名字
-  void SelfTest();	//测试方法	// test whether thread impl is working
-
-  int getParent() { return this->parent_id; } // Return parent pointer
-
-  bool valid() {return this->enable; }
+    void CheckOverflow();   	// Check if thread stack has overflowed
+    void setStatus(ThreadStatus st) { status = st; }
+    char* getName() { return (name); }
+    void Print() { cout << name; }
+    void SelfTest();		// test whether thread impl is working
 
   private:
-    // some of the private data for this class is listed above
+    // some of the private data for this class is listed above-
     
     int *stack; 	 	// Bottom of the stack 
 				// NULL if this is the main thread
 				// (If NULL, don't deallocate stack)
     ThreadStatus status;	// ready, running or blocked
     char* name;
-    int parent_id;// parent pointer
-    bool enable;
 
     void StackAllocate(VoidFunctionPtr func, void *arg);
     				// Allocate a stack for thread.
@@ -172,4 +178,3 @@ void SWITCH(Thread *oldThread, Thread *newThread);
 }
 
 #endif // THREAD_H
-

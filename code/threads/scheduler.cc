@@ -60,9 +60,14 @@ Scheduler::ReadyToRun (Thread *thread)
     DEBUG(dbgThread, "Putting thread on ready list: " << thread->getName());
 
     thread->setStatus(READY);
-    readyList->Append(thread);
+    //readyList->Append(thread);
+	/*
+	* Sort insert
+	*/
+	readyList->SortInsert(thread);
 }
 
+/*
 void Scheduler::ReadyToRunPriority(Thread *thread){
 	//将线程thread按优先级加入就绪队列
 	ASSERT(kernel->interrupt->getLevel() == IntOff);
@@ -107,8 +112,7 @@ void Scheduler::ReadyToRunPriority(Thread *thread){
 		}
 	}
 }
-
-
+*/
 
 //----------------------------------------------------------------------
 // Scheduler::FindNextToRun
@@ -123,10 +127,20 @@ Scheduler::FindNextToRun ()
 {
     ASSERT(kernel->interrupt->getLevel() == IntOff);
 
+	/*
+	* Modify scheduler
+	*/
     if (readyList->IsEmpty()) {
-	return NULL;
+		// If list is empty, return
+		return NULL;
     } else {
-    	return readyList->RemoveFront();
+    	Thread *nextThread = readyList->RemoveFront();
+    	Scheduler *scheduler = kernel->scheduler;
+    	scheduler->Run(nextThread, false);
+        return nextThread;
+		//return readyList->RemoveFront();
+    	//return readyList->SortedRemoveFront(ComparePriority);
+
     }
 }
 
@@ -155,13 +169,13 @@ Scheduler::Run (Thread *nextThread, bool finishing)
     ASSERT(kernel->interrupt->getLevel() == IntOff);
 
     if (finishing) {	// mark that we need to delete current thread
-         ASSERT(toBeDestroyed == NULL);
-	 toBeDestroyed = oldThread;
+        ASSERT(toBeDestroyed == NULL);
+		toBeDestroyed = oldThread;
     }
     
     if (oldThread->space != NULL) {	// if this thread is a user program,
         oldThread->SaveUserState(); 	// save the user's CPU registers
-	oldThread->space->SaveState();
+		oldThread->space->SaveState();
     }
     
     oldThread->CheckOverflow();		    // check if the old thread
@@ -192,7 +206,7 @@ Scheduler::Run (Thread *nextThread, bool finishing)
     
     if (oldThread->space != NULL) {	    // if there is an address space
         oldThread->RestoreUserState();     // to restore, do it.
-	oldThread->space->RestoreState();
+		oldThread->space->RestoreState();
     }
 }
 
